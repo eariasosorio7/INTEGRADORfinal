@@ -1,0 +1,299 @@
+-- =============================================
+-- SCRIPT DE CREACIÓN DE BASE DE DATOS
+-- Software de Gestión de Bitácoras Pedagógicas
+-- Oracle Database 10g Express Edition
+-- Usuario DBA (SYS/SYSTEM) para crear estructura
+-- =============================================
+
+-- ── ACTUALIZACIÓN (BASES DE DATOS YA CREADAS) ────────────────────
+-- Si ya tienes las tablas creadas de una versión anterior, ejecuta
+-- SOLO estas dos sentencias como PI20261 para agregar las columnas
+-- nuevas (objetivo general de la bitácora y ubicación de la visita).
+-- Si vas a crear la base desde cero, ignóralas: ya están incluidas
+-- en los CREATE TABLE de más abajo.
+ALTER TABLE bitacoras ADD (objetivo VARCHAR2(1000));
+ALTER TABLE visitas   ADD (ubicacion VARCHAR2(500));
+ALTER TABLE practicas ADD (fecha_fin DATE);
+COMMIT;
+
+-- ── 1. CREAR TABLESPACE (opcional, ajustar rutas según SO) ────────
+-- CREATE TABLESPACE TS_INTEGRADOR
+--   DATAFILE 'ts_integrador.dbf' SIZE 100M AUTOEXTEND ON;
+
+-- ── 2. CREAR SUPERUSUARIO (DBA del esquema) ───────────────────────
+-- Ejecutar como SYS o SYSTEM
+CREATE USER SUPER_PI IDENTIFIED BY SuperPI2026!
+    DEFAULT TABLESPACE USERS
+    QUOTA UNLIMITED ON USERS;
+
+GRANT DBA TO SUPER_PI;          -- acceso total
+GRANT CONNECT TO SUPER_PI;
+GRANT RESOURCE TO SUPER_PI;
+COMMIT;
+
+-- ── 3. CREAR ESQUEMA PRINCIPAL ────────────────────────────────────
+CREATE USER PI20261 IDENTIFIED BY PI20261
+    DEFAULT TABLESPACE USERS
+    QUOTA UNLIMITED ON USERS;
+
+GRANT CONNECT, RESOURCE TO PI20261;
+COMMIT;
+
+-- ────────────────────────────────────────────────────────────────
+-- A partir de aquí ejecutar como PI20261 (o SUPER_PI)
+-- ────────────────────────────────────────────────────────────────
+
+-- ── TABLA GRUPOS ─────────────────────────────────────────────────
+CREATE TABLE grupos (
+    codigo      VARCHAR2(20),
+    semestre    NUMBER(1) NOT NULL,
+    CONSTRAINT pk_grupos PRIMARY KEY (codigo)
+);
+
+INSERT INTO grupos VALUES ('NINGUNO', 0);
+COMMIT;
+
+-- ── TABLA USUARIOS ───────────────────────────────────────────────
+CREATE TABLE usuarios (
+    id_usuario      NUMBER(15),
+    nombre1         VARCHAR2(50) NOT NULL,
+    nombre2         VARCHAR2(50),
+    apellido1       VARCHAR2(50) NOT NULL,
+    apellido2       VARCHAR2(50),
+    correo          VARCHAR2(100) NOT NULL,
+    contrasena      VARCHAR2(100) NOT NULL,
+    rol             VARCHAR2(20) NOT NULL,
+    estado          VARCHAR2(20) NOT NULL,
+    fecha_registro  DATE DEFAULT SYSDATE,
+    grupo           VARCHAR2(20) NOT NULL,
+    CONSTRAINT pk_usuarios PRIMARY KEY (id_usuario),
+    CONSTRAINT uq_correo UNIQUE (correo),
+    CONSTRAINT fk_usuario_grupo FOREIGN KEY (grupo) REFERENCES grupos(codigo),
+    CONSTRAINT chk_rol CHECK (rol IN ('ADMIN','DOCENTE','ASESOR','ESTUDIANTE')),
+    CONSTRAINT chk_estado_usuario CHECK (estado IN ('ACTIVO','INACTIVO'))
+);
+
+-- Administrador del sistema
+INSERT INTO usuarios VALUES (
+    1000000001, 'Admin', NULL, 'Sistema', NULL,
+    'admin@udi.edu.co', '1000000001', 'ADMIN', 'ACTIVO', SYSDATE, 'NINGUNO'
+);
+COMMIT;
+
+-- ── TABLA PRACTICAS ──────────────────────────────────────────────
+CREATE TABLE practicas (
+    id_practica         VARCHAR2(30),
+    nivel               VARCHAR2(10) NOT NULL,
+    horas_requeridas    NUMBER(3) NOT NULL,
+    estado              VARCHAR2(20) DEFAULT 'ACTIVA',
+    codigo_grupo        VARCHAR2(20) NOT NULL,
+    fecha_fin           DATE,
+    CONSTRAINT pk_practicas PRIMARY KEY (id_practica),
+    CONSTRAINT fk_practica_grupo FOREIGN KEY (codigo_grupo) REFERENCES grupos(codigo),
+    CONSTRAINT chk_nivel CHECK (nivel IN ('I','II','III')),
+    CONSTRAINT chk_estado_practica CHECK (estado IN ('ACTIVA','CERRADA'))
+);
+
+-- ── TABLA BITACORAS ──────────────────────────────────────────────
+CREATE TABLE bitacoras (
+    id_bitacora         VARCHAR2(50),
+    codigo              VARCHAR2(6) NOT NULL,
+    id_practica         VARCHAR2(30) NOT NULL,
+    fecha_limite        DATE NOT NULL,
+    estado              VARCHAR2(20) DEFAULT 'ACTIVA',
+    fortalezas          VARCHAR2(2000),
+    areas_mejora        VARCHAR2(2000),
+    comentario_final    VARCHAR2(2000),
+    calificacion        NUMBER(3,1) DEFAULT 0,
+    id_asesor           NUMBER(15),
+    objetivo            VARCHAR2(1000),
+    CONSTRAINT pk_bitacoras PRIMARY KEY (id_bitacora),
+    CONSTRAINT uq_codigo_bitacora UNIQUE (codigo),
+    CONSTRAINT fk_bitacora_practica FOREIGN KEY (id_practica) REFERENCES practicas(id_practica),
+    CONSTRAINT fk_bitacora_asesor FOREIGN KEY (id_asesor) REFERENCES usuarios(id_usuario),
+    CONSTRAINT chk_estado_bitacora CHECK (estado IN ('ACTIVA','CERRADA'))
+);
+
+-- ── TABLA VISITAS ────────────────────────────────────────────────
+CREATE TABLE visitas (
+    id_visita           VARCHAR2(50),
+    id_bitacora         VARCHAR2(50) NOT NULL,
+    id_estudiante       NUMBER(15),
+    numero_visita       NUMBER(2) NOT NULL,
+    fecha_visita        DATE,
+    fecha_limite        DATE NOT NULL,
+    horas_registradas   NUMBER(3) DEFAULT 0,
+    respuestas          VARCHAR2(4000),
+    estado              VARCHAR2(20) DEFAULT 'PENDIENTE',
+    ruta_plantilla      VARCHAR2(500),
+    horas_validadas     NUMBER(3) DEFAULT 0,
+    estado_validacion   VARCHAR2(20) DEFAULT 'PENDIENTE',
+    retroalimentacion   VARCHAR2(2000),
+    nota                NUMBER(3,1) DEFAULT 0,
+    ubicacion           VARCHAR2(500),
+    CONSTRAINT pk_visitas PRIMARY KEY (id_visita),
+    CONSTRAINT fk_visita_bitacora FOREIGN KEY (id_bitacora) REFERENCES bitacoras(id_bitacora),
+    CONSTRAINT fk_visita_estudiante FOREIGN KEY (id_estudiante) REFERENCES usuarios(id_usuario),
+    CONSTRAINT chk_estado_visita CHECK (estado IN ('PENDIENTE','COMPLETADA')),
+    CONSTRAINT chk_estado_val CHECK (estado_validacion IN ('PENDIENTE','VALIDADO'))
+);
+
+-- ── TABLA PREGUNTAS ──────────────────────────────────────────────
+CREATE TABLE preguntas (
+    id_pregunta     VARCHAR2(100),
+    id_visita       VARCHAR2(100) NOT NULL,
+    numero          NUMBER(2) NOT NULL,
+    texto           VARCHAR2(1000) NOT NULL,
+    CONSTRAINT pk_preguntas PRIMARY KEY (id_pregunta),
+    CONSTRAINT fk_pregunta_visita FOREIGN KEY (id_visita) REFERENCES visitas(id_visita)
+);
+
+-- ── TABLA RESPUESTAS ─────────────────────────────────────────────
+CREATE TABLE respuestas (
+    id_respuesta    VARCHAR2(100),
+    id_pregunta     VARCHAR2(100) NOT NULL,
+    id_estudiante   NUMBER(15) NOT NULL,
+    respuesta       VARCHAR2(4000) NOT NULL,
+    CONSTRAINT pk_respuestas PRIMARY KEY (id_respuesta),
+    CONSTRAINT fk_resp_pregunta FOREIGN KEY (id_pregunta) REFERENCES preguntas(id_pregunta),
+    CONSTRAINT fk_resp_estudiante FOREIGN KEY (id_estudiante) REFERENCES usuarios(id_usuario)
+);
+
+-- ── TABLA DOCUMENTOS ─────────────────────────────────────────────
+CREATE TABLE documentos (
+    id_documento    VARCHAR2(30),
+    id_estudiante   NUMBER(15) NOT NULL,
+    tipo_documento  VARCHAR2(50) NOT NULL,
+    ruta_archivo    VARCHAR2(500) NOT NULL,
+    fecha_subida    DATE DEFAULT SYSDATE,
+    estado          VARCHAR2(20) DEFAULT 'PENDIENTE',
+    CONSTRAINT pk_documentos PRIMARY KEY (id_documento),
+    CONSTRAINT fk_doc_estudiante FOREIGN KEY (id_estudiante) REFERENCES usuarios(id_usuario),
+    CONSTRAINT chk_estado_doc CHECK (estado IN ('PENDIENTE','APROBADO','RECHAZADO'))
+);
+
+-- =============================================
+-- ROLES DE BASE DE DATOS POR PERFIL
+-- Cada perfil del software tiene su propio
+-- usuario Oracle con los privilegios mínimos
+-- necesarios (Principio de mínimo privilegio).
+-- =============================================
+
+-- ── ROL ESTUDIANTE ───────────────────────────────────────────────
+-- Puede leer prácticas de su grupo, insertar/leer sus documentos y visitas.
+CREATE ROLE ROL_ESTUDIANTE;
+GRANT SELECT ON PI20261.grupos      TO ROL_ESTUDIANTE;
+GRANT SELECT ON PI20261.practicas   TO ROL_ESTUDIANTE;
+GRANT SELECT ON PI20261.bitacoras   TO ROL_ESTUDIANTE;
+GRANT SELECT, INSERT, UPDATE ON PI20261.visitas    TO ROL_ESTUDIANTE;
+GRANT SELECT, INSERT, UPDATE ON PI20261.preguntas  TO ROL_ESTUDIANTE;
+GRANT SELECT, INSERT ON PI20261.respuestas         TO ROL_ESTUDIANTE;
+GRANT SELECT, INSERT ON PI20261.documentos         TO ROL_ESTUDIANTE;
+GRANT SELECT ON PI20261.usuarios    TO ROL_ESTUDIANTE;
+
+CREATE USER USR_ESTUDIANTE IDENTIFIED BY Estu2026!
+    DEFAULT TABLESPACE USERS QUOTA 10M ON USERS;
+GRANT CONNECT TO USR_ESTUDIANTE;
+GRANT ROL_ESTUDIANTE TO USR_ESTUDIANTE;
+COMMIT;
+
+-- ── ROL ASESOR ───────────────────────────────────────────────────
+-- Puede leer y actualizar bitácoras y visitas asignadas.
+CREATE ROLE ROL_ASESOR;
+GRANT SELECT ON PI20261.grupos      TO ROL_ASESOR;
+GRANT SELECT ON PI20261.practicas   TO ROL_ASESOR;
+GRANT SELECT, UPDATE ON PI20261.bitacoras  TO ROL_ASESOR;
+GRANT SELECT, UPDATE ON PI20261.visitas    TO ROL_ASESOR;
+GRANT SELECT ON PI20261.preguntas   TO ROL_ASESOR;
+GRANT SELECT ON PI20261.respuestas  TO ROL_ASESOR;
+GRANT SELECT ON PI20261.documentos  TO ROL_ASESOR;
+GRANT SELECT ON PI20261.usuarios    TO ROL_ASESOR;
+
+CREATE USER USR_ASESOR IDENTIFIED BY Ases2026!
+    DEFAULT TABLESPACE USERS QUOTA 10M ON USERS;
+GRANT CONNECT TO USR_ASESOR;
+GRANT ROL_ASESOR TO USR_ASESOR;
+COMMIT;
+
+-- ── ROL DOCENTE ──────────────────────────────────────────────────
+-- Puede gestionar prácticas, bitácoras, visitas y aprobar documentos.
+CREATE ROLE ROL_DOCENTE;
+GRANT SELECT, INSERT, UPDATE ON PI20261.grupos    TO ROL_DOCENTE;
+GRANT SELECT, INSERT, UPDATE ON PI20261.practicas TO ROL_DOCENTE;
+GRANT SELECT, INSERT, UPDATE, DELETE ON PI20261.bitacoras TO ROL_DOCENTE;
+GRANT SELECT, INSERT, UPDATE, DELETE ON PI20261.visitas   TO ROL_DOCENTE;
+GRANT SELECT, INSERT, UPDATE, DELETE ON PI20261.preguntas TO ROL_DOCENTE;
+GRANT SELECT, INSERT ON PI20261.respuestas        TO ROL_DOCENTE;
+GRANT SELECT, UPDATE ON PI20261.documentos        TO ROL_DOCENTE;
+GRANT SELECT ON PI20261.usuarios                  TO ROL_DOCENTE;
+
+CREATE USER USR_DOCENTE IDENTIFIED BY Doce2026!
+    DEFAULT TABLESPACE USERS QUOTA 20M ON USERS;
+GRANT CONNECT TO USR_DOCENTE;
+GRANT ROL_DOCENTE TO USR_DOCENTE;
+COMMIT;
+
+-- ── ROL ADMIN ────────────────────────────────────────────────────
+-- Acceso total al esquema PI20261.
+CREATE ROLE ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.grupos     TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.usuarios   TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.practicas  TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.bitacoras  TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.visitas    TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.preguntas  TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.respuestas TO ROL_ADMIN;
+GRANT ALL PRIVILEGES ON PI20261.documentos TO ROL_ADMIN;
+
+CREATE USER USR_ADMIN IDENTIFIED BY Adm1n2026!
+    DEFAULT TABLESPACE USERS QUOTA UNLIMITED ON USERS;
+GRANT CONNECT TO USR_ADMIN;
+GRANT ROL_ADMIN TO USR_ADMIN;
+COMMIT;
+
+-- ── NOTA SOBRE LA CONEXIÓN EN LA APLICACIÓN ──────────────────────
+-- ConexionDB.java debe usar las credenciales del perfil activo:
+--   ESTUDIANTE → USR_ESTUDIANTE / Estu2026!
+--   ASESOR     → USR_ASESOR     / Ases2026!
+--   DOCENTE    → USR_DOCENTE    / Doce2026!
+--   ADMIN      → USR_ADMIN      / Adm1n2026!
+-- Esto garantiza que si un estudiante accede, su sesión Oracle
+-- solo tiene los permisos del rol ESTUDIANTE.
+
+-- =============================================
+-- SCRIPT DE LIMPIEZA (datos, no estructura)
+-- =============================================
+DELETE FROM respuestas;
+DELETE FROM preguntas;
+DELETE FROM visitas;
+DELETE FROM bitacoras;
+DELETE FROM documentos;
+DELETE FROM practicas;
+UPDATE usuarios SET grupo = 'NINGUNO' WHERE rol != 'ADMIN';
+DELETE FROM usuarios WHERE rol != 'ADMIN';
+DELETE FROM grupos WHERE codigo != 'NINGUNO';
+COMMIT;
+
+-- =============================================
+-- SCRIPT DE ELIMINACIÓN COMPLETA
+-- Ejecutar en este orden (FK primero)
+-- =============================================
+DROP TABLE documentos;
+DROP TABLE respuestas;
+DROP TABLE preguntas;
+DROP TABLE visitas;
+DROP TABLE bitacoras;
+DROP TABLE practicas;
+DROP TABLE usuarios;
+DROP TABLE grupos;
+
+-- Para eliminar los usuarios/roles de BD también:
+-- DROP USER USR_ESTUDIANTE CASCADE;
+-- DROP USER USR_ASESOR CASCADE;
+-- DROP USER USR_DOCENTE CASCADE;
+-- DROP USER USR_ADMIN CASCADE;
+-- DROP USER SUPER_PI CASCADE;
+-- DROP ROLE ROL_ESTUDIANTE;
+-- DROP ROLE ROL_ASESOR;
+-- DROP ROLE ROL_DOCENTE;
+-- DROP ROLE ROL_ADMIN;
