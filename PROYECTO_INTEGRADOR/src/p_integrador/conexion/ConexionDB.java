@@ -26,7 +26,7 @@ import java.sql.*;
  */
 public class ConexionDB {
 
-    private static final String URL     = "jdbc:oracle:thin:@localhost:1521:XE";
+    private static final String URL     = "jdbc:oracle:thin:@192.168.254.215:1521:orcl";
     private static final String ESQUEMA = "PI20261"; // dueño de las tablas
 
     // Perfil actual (por defecto: cuenta de arranque para el login)
@@ -38,13 +38,13 @@ public class ConexionDB {
         if (rol == null) rol = "";
         switch (rol.trim().toUpperCase()) {
             case "ADMIN":
-                user = "USR_ADMIN";      pass = "Adm1n2026!"; break;
+                user = "USR_ADMIN";      pass = "Adm1n2026"; break;
             case "DOCENTE":
-                user = "USR_DOCENTE";    pass = "Doce2026!";  break;
+                user = "USR_DOCENTE";    pass = "Doce2026";  break;
             case "ASESOR":
-                user = "USR_ASESOR";     pass = "Ases2026!";  break;
+                user = "USR_ASESOR";     pass = "Ases2026";  break;
             case "ESTUDIANTE":
-                user = "USR_ESTUDIANTE"; pass = "Estu2026!";  break;
+                user = "USR_ESTUDIANTE"; pass = "Estu2026";  break;
             default:
                 user = "PI20261";        pass = "PI20261";    break;
         }
